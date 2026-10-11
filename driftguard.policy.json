@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "debug-must-not-be-enabled",
+      "description": "Do not enable debug mode in the deployment configuration.",
+      "severity": "error",
+      "operation": "any",
+      "path": "$.logging.debug",
+      "newValueEquals": true
+    },
+    {
+      "id": "tls-must-not-be-disabled",
+      "description": "Database TLS must not be disabled.",
+      "severity": "error",
+      "operation": "any",
+      "path": "$.database.sslMode",
+      "newValueEquals": "disable"
+    },
+    {
+      "id": "public-ingress-needs-review",
+      "description": "Public ingress should be explicitly reviewed before deployment.",
+      "severity": "error",
+      "operation": "any",
+      "path": "$.network.publicIngress",
+      "newValueEquals": true
+    },
+    {
+      "id": "single-replica-warning",
+      "description": "A service was changed to one replica; confirm this is intentional.",
+      "severity": "warning",
+      "operation": "any",
+      "path": "$.services.*.replicas",
+      "newValueEquals": 1
+    },
+    {
+      "id": "password-change-review",
+      "description": "A password field changed. Keep secrets in a dedicated secret store.",
+      "severity": "warning",
+      "operation": "any",
+      "path": "$.**.password"
+    },
+    {
+      "id": "billing-feature-must-not-disappear",
+      "description": "The billing feature flag was removed; review the intended migration.",
+      "severity": "error",
+      "operation": "removed",
+      "path": "$.features.billingEnabled"
+    },
+    {
+      "id": "configuration-type-drift",
+      "description": "A configuration value changed type; verify binder and deployment behavior.",
+      "severity": "warning",
+      "operation": "type-changed",
+      "path": "$.**"
+    }
+  ]
+}

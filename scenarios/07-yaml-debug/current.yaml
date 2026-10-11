@@ -1,0 +1,6 @@
+service: payments-api
+logging:
+  debug: true
+  level: Information
+database:
+  sslMode: require

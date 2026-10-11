@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore DriftGuard.sln
+      - name: Build
+        run: dotnet build DriftGuard.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test DriftGuard.sln --configuration Release --no-build --logger "console;verbosity=normal"
+      - name: Run scenario lab
+        run: ./scripts/run-scenarios.sh

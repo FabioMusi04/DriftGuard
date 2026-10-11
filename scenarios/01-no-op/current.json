@@ -1,0 +1,8 @@
+{
+  "features": {
+    "billingEnabled": true
+  },
+  "database": {"port": 5432, "sslMode": "require"},
+  "logging": {"level": "Information", "debug": false},
+  "service": "payments-api"
+}

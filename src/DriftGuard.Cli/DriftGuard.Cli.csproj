@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>DriftGuard.Cli</RootNamespace>
+    <AssemblyName>driftguard</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DriftGuard.Core\DriftGuard.Core.csproj" />
+  </ItemGroup>
+</Project>
