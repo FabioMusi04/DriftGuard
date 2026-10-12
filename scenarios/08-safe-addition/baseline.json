@@ -1,1 +1,1 @@
-{"service":"payments-api","logging":{"debug":false},"features":{"billingEnabled":true}}
+﻿{"service":"payments-api","logging":{"debug":false},"features":{"billingEnabled":true}}

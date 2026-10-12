@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  contents: write
 
 jobs:
   build-and-test:
@@ -24,4 +25,4 @@ jobs:
       - name: Test
         run: dotnet test DriftGuard.sln --configuration Release --no-build --logger "console;verbosity=normal"
       - name: Run scenario lab
-        run: ./scripts/run-scenarios.sh
+        run: pwsh ./scripts/run-scenarios.ps1

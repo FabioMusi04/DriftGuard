@@ -1,4 +1,4 @@
-service: payments-api
+﻿service: payments-api
 logging:
   debug: true
   level: Information

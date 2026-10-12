@@ -1,4 +1,4 @@
-namespace DriftGuard.Cli;
+﻿namespace DriftGuard.Cli;
 
 internal static class PolicyTemplates
 {

@@ -1,8 +1,8 @@
-# DriftGuard
+﻿# DriftGuard
 
 **Semantic configuration diff and deployment-policy checks for .NET teams.** DriftGuard compares two JSON/YAML configuration snapshots, explains their behavioral differences, applies a small policy rule set, and returns CI-friendly exit codes.
 
-> Status: early open-source MVP (`0.1.0`). The code and scenarios are a strong starting point, not a substitute for testing with your own deployment configuration before production enforcement.
+> Status: early open-source MVP (`0.1.1` engineering hardening patch). The code and scenarios are a strong starting point, not a substitute for testing with your own deployment configuration before production enforcement.
 
 ## Why a CLI first?
 
@@ -18,7 +18,9 @@ DriftGuard is intentionally CLI-first. Configuration checks belong in local work
 - Exit codes suitable for CI: `0` pass, `1` policy threshold failed, `2` usage/input error.
 - Best-effort automatic redaction for sensitive path names and common token-like values.
 - Input limits: config files up to 5 MiB, policy files up to 1 MiB, and parser depth limits.
-- Unit tests, CI workflow, production-oriented sample policy, and 12 reproducible scenarios.
+- Unit tests, CI workflow, production-oriented sample policy, and 17 reproducible scenarios.
+- Fail-closed duplicate JSON keys, bounded YAML expansion and policy evaluation, and strict CLI options.
+- Versioned JSON report fields (`schemaVersion`, `policyApplied`) as a starting point for web integrations.
 
 ## Requirements
 
@@ -94,7 +96,7 @@ dotnet run --project src/DriftGuard.Cli -- init --path driftguard.policy.json
 | `--fail-on error` | Exit `1` only on error findings. |
 | Invalid input / unknown option | Exit `2`; details go to stderr. |
 
-`check` requiring an explicit policy is deliberate: an absent policy must not quietly look like a successful production gate.
+`check` requiring an explicit policy is deliberate: an absent policy must not quietly look like a successful production gate. `compare --fail-on warning/error` **also requires** `--policy`; otherwise the CLI returns exit `2` rather than silently passing without rules. Options that do not belong to a given command are rejected.
 
 ## Policy format
 
@@ -122,19 +124,19 @@ Supported rule properties:
 - `description`: human-readable reason.
 - `severity`: `info`, `warning`, or `error`.
 - `operation`: `any`, `added`, `removed`, `changed`, or `type-changed`.
-- `path`: case-insensitive glob. `*` matches one path segment; `**` matches any number of characters/segments. Examples: `$.services.*.replicas`, `$.**.password`.
+- `path`: case-insensitive, segment-aware glob. `*` matches exactly one segment (including bracket-quoted keys), `**` matches zero or more complete path segments. Examples: `$.services.*.replicas`, `$.**.password` (matches both `$.password` and `$.api.password`). Dots, quotes and backslashes in literal key names use `['...']` bracket notation. Wildcards inside **unquoted** dot segments match characters within that segment.
 - `newValueEquals` (optional): a JSON scalar (`string`, `number`, `boolean`, or `null`) compared with the current value. Use JSON types intentionally; `1` and `"1"` are not equivalent. Numeric lexical changes such as `1` vs `1.0` are conservatively reported as drift.
 
-A rule evaluates observed differences only. It is not a full static policy scan of unchanged settings. For example, the sample password rule reports a changed password path; it does not prove that every existing secret is stored safely.
+A rule evaluates observed differences only. For an entire object/array added, removed or replaced by a type change, the policy engine also evaluates **its descendants**, even though the diff report keeps the original parent-level change compact. Thus, adding `{ "logging": { "debug": true } }` cannot bypass the policy at `$.logging.debug`. Broad rules such as `$.**` may produce multiple findings for these changes. It is not a full static policy scan of unchanged settings. For example, the sample password rule reports a changed password path; it does not prove that every existing secret is stored safely.
 
 ## Scenario lab
 
-All sample inputs are intentionally fake. Run every test case after building:
+All sample inputs are intentionally fake. Run all 17 test scenarios after building:
 
 ```bash
 # Linux/macOS
 dotnet test DriftGuard.sln --configuration Release
-./scripts/run-scenarios.sh
+bash ./scripts/run-scenarios.sh
 
 # Windows PowerShell
 dotnet test DriftGuard.sln --configuration Release
@@ -161,13 +163,15 @@ scripts/                   Scenario runners
 
 ## Deliberate limitations in v0.1
 
-- JSON and YAML only; root values must be objects/mappings.
+- JSON and YAML only; root values must be objects/mappings. Duplicate JSON property names are rejected.
 - YAML scalar conversion supports common config types (quoted strings, booleans, null, integers and decimal/exponent numbers); this is not a complete YAML-to-JSON compatibility layer for every YAML 1.1/1.2 edge case.
 - Arrays are compared by index. Reordering an array is meaningful drift.
 - Paths are JSONPath-like, not a full implementation of the JSONPath standard. Property names with dots or special characters use bracket notation in reports; test policy matching against those names before enforcing it.
-- Redaction is best effort and heuristic. Treat input and output as sensitive; do not publish reports indiscriminately.
+- Redaction is best effort and heuristic. Treat input and output as sensitive; do not publish reports indiscriminately or upload them to untrusted services. The future cloud ingestion feature requires a stricter values-free report mode.
 - No automatic merge, remote secret retrieval, cloud API calls, or write-back to configuration files.
 - CLI output uses the standard terminal; there is no web dashboard in v1.
+- Policy evaluation fails with exit `2` for workloads exceeding its bounded candidate/finding/comparison limits. See the engineering review for details.
+- JSON reports use `schemaVersion: 1` and `policyApplied` to distinguish successful policy checks from report-only comparisons. See [`docs/contracts/`](docs/contracts/README.md).
 
 ## Production-readiness checklist before enforcing in deployment
 
@@ -178,6 +182,17 @@ scripts/                   Scenario runners
 5. Pin the tool version in CI and review package updates.
 6. Decide whether warnings should block a release, and document exceptions/ownership.
 7. Treat policy descriptions and baseline/current paths as potentially sensitive in build logs.
+
+## Engineering review, web roadmap, and Free / Basic / Pro plans
+
+- [Detailed code review and bugfixes (Italian)](docs/ENGINEERING-REVIEW.it.md)
+- [Prioritized engineering/product roadmap (Italian)](docs/ROADMAP.it.md)
+- [Proposed web/SaaS architecture (Italian)](docs/architecture/WEB-SAAS.it.md)
+- [Free, Basic, Pro licensing/entitlement model (Italian)](docs/product/PLANS.it.md)
+- [Proposal JSON plan catalog](docs/product/plan-catalog.proposal.json)
+- [Report v1 JSON schema](docs/contracts/report.v1.schema.json)
+
+**Important:** the web backend, billing, paid plan enforcement and subscriptions are **not implemented**. The current code is MIT licensed; proposed plans apply only to future hosted services.
 
 ## Roadmap ideas (not implemented)
 

@@ -1,4 +1,4 @@
-using DriftGuard.Core;
+﻿using DriftGuard.Core;
 
 namespace DriftGuard.Cli;
 
@@ -21,35 +21,35 @@ internal static class Program
                 "check" => RunComparison(args[1..], isCheck: true),
                 "explain" => RunExplain(args[1..]),
                 "init" => RunInit(args[1..]),
-                "version" or "--version" => PrintVersion(),
+                "version" or "--version" => PrintVersion(args[1..]),
                 _ => UnknownCommand(command)
             };
         }
         catch (ConfigParseException ex)
         {
-            Console.Error.WriteLine($"error: {ex.Message}");
+            Console.Error.WriteLine($"error: {ReportWriter.SafeConsole(ex.Message)}");
             return 2;
         }
         catch (IOException ex)
         {
-            Console.Error.WriteLine($"error: I/O operation failed: {ex.Message}");
+            Console.Error.WriteLine($"error: I/O operation failed: {ReportWriter.SafeConsole(ex.Message)}");
             return 2;
         }
         catch (UnauthorizedAccessException ex)
         {
-            Console.Error.WriteLine($"error: access denied: {ex.Message}");
+            Console.Error.WriteLine($"error: access denied: {ReportWriter.SafeConsole(ex.Message)}");
             return 2;
         }
         catch (CliUsageException ex)
         {
-            Console.Error.WriteLine($"error: {ex.Message}");
+            Console.Error.WriteLine($"error: {ReportWriter.SafeConsole(ex.Message)}");
             Console.Error.WriteLine("Run 'driftguard --help' for usage.");
             return 2;
         }
         catch (Exception ex)
         {
             // No stack traces by default: configuration tooling should not dump file contents or internals.
-            Console.Error.WriteLine($"error: unexpected failure ({ex.GetType().Name}): {ex.Message}");
+            Console.Error.WriteLine($"error: unexpected failure ({ex.GetType().Name}). See the documentation for troubleshooting.");
             return 2;
         }
     }
@@ -63,6 +63,7 @@ internal static class Program
             return 0;
         }
 
+        Arguments.AllowOnly(parsed, "help", "baseline", "current", "policy", "format", "fail-on");
         var (baselinePath, currentPath) = ReadPairPaths(parsed, expectedPositionals: 2);
         var format = GetOption(parsed, "format") ?? "text";
         if (format is not ("text" or "json"))
@@ -72,12 +73,15 @@ internal static class Program
         if (failOn is not ("none" or "warning" or "error"))
             throw new CliUsageException("--fail-on must be 'none', 'warning', or 'error'.");
 
-        var baseline = ConfigParser.ParseFile(baselinePath);
-        var current = ConfigParser.ParseFile(currentPath);
-        var changes = new DiffEngine().Compare(baseline, current);
         var policyPath = GetOption(parsed, "policy");
         if (isCheck && policyPath is null)
             throw new CliUsageException("check requires --policy so a CI run cannot silently pass without rules.");
+        if (policyPath is null && failOn != "none")
+            throw new CliUsageException("--fail-on warning/error requires --policy; otherwise the check would silently pass.");
+
+        var baseline = ConfigParser.ParseFile(baselinePath);
+        var current = ConfigParser.ParseFile(currentPath);
+        var changes = new DiffEngine().Compare(baseline, current);
         var findings = policyPath is null
             ? Array.Empty<PolicyFinding>()
             : new PolicyEngine().Evaluate(PolicyLoader.LoadFile(policyPath), changes).ToArray();
@@ -91,9 +95,9 @@ internal static class Program
         var exitCode = failed ? 1 : 0;
 
         if (format == "json")
-            ReportWriter.WriteJson(baselinePath, currentPath, changes, findings, failOn, exitCode);
+            ReportWriter.WriteJson(baselinePath, currentPath, changes, findings, failOn, exitCode, policyApplied: policyPath is not null);
         else
-            ReportWriter.WriteText(baselinePath, currentPath, changes, findings, failOn, exitCode);
+            ReportWriter.WriteText(baselinePath, currentPath, changes, findings, failOn, exitCode, policyApplied: policyPath is not null);
 
         return exitCode;
     }
@@ -107,6 +111,7 @@ internal static class Program
             return 0;
         }
 
+        Arguments.AllowOnly(parsed, "help", "baseline", "current", "path", "policy", "format");
         string baselinePath;
         string currentPath;
         string path;
@@ -126,6 +131,10 @@ internal static class Program
                 throw new CliUsageException("Use either positional arguments or --baseline/--current/--path.");
         }
 
+        JsonPath.ValidateExactPath(path);
+        var format = GetOption(parsed, "format") ?? "text";
+        if (format is not ("text" or "json"))
+            throw new CliUsageException("--format must be 'text' or 'json'.");
         var baseline = ConfigParser.ParseFile(baselinePath);
         var current = ConfigParser.ParseFile(currentPath);
         var changes = new DiffEngine().Compare(baseline, current);
@@ -134,18 +143,15 @@ internal static class Program
         var findings = policyPath is null
             ? Array.Empty<PolicyFinding>()
             : new PolicyEngine().Evaluate(PolicyLoader.LoadFile(policyPath), relevant).ToArray();
-        var format = GetOption(parsed, "format") ?? "text";
         if (format == "json")
         {
-            ReportWriter.WriteJson(baselinePath, currentPath, relevant, findings, "none", 0, path);
+            ReportWriter.WriteJson(baselinePath, currentPath, relevant, findings, "none", 0, path, policyApplied: policyPath is not null);
             return 0;
         }
-        if (format != "text")
-            throw new CliUsageException("--format must be 'text' or 'json'.");
 
-        Console.WriteLine($"DriftGuard explanation: {path}");
-        Console.WriteLine($"Baseline: {baselinePath}");
-        Console.WriteLine($"Current:  {currentPath}");
+        Console.WriteLine($"DriftGuard explanation: {ReportWriter.SafeConsole(path)}");
+        Console.WriteLine($"Baseline: {ReportWriter.SafeConsole(baselinePath)}");
+        Console.WriteLine($"Current:  {ReportWriter.SafeConsole(currentPath)}");
         if (relevant.Length == 0)
             Console.WriteLine("No semantic changes found at this path or below it.");
         else
@@ -157,6 +163,12 @@ internal static class Program
     private static int RunInit(string[] args)
     {
         var parsed = Arguments.Parse(args);
+        Arguments.AllowOnly(parsed, "help", "path", "force");
+        if (parsed.Options.ContainsKey("help"))
+        {
+            HelpPrinter.Print("init");
+            return 0;
+        }
         if (parsed.Positionals.Count != 0)
             throw new CliUsageException("init accepts options only.");
         var path = GetOption(parsed, "path") ?? "driftguard.policy.json";
@@ -190,11 +202,17 @@ internal static class Program
         parsed.Options.TryGetValue(name, out var value) ? value : null;
 
     private static bool IsSameOrBelow(string candidate, string path) =>
-        candidate.Equals(path, StringComparison.Ordinal) || candidate.StartsWith(path + ".", StringComparison.Ordinal) || candidate.StartsWith(path + "[", StringComparison.Ordinal);
+        candidate.Equals(path, StringComparison.Ordinal) ||
+        candidate.StartsWith(path + ".", StringComparison.Ordinal) ||
+        candidate.StartsWith(path + "[", StringComparison.Ordinal) ||
+        path.StartsWith(candidate + ".", StringComparison.Ordinal) ||
+        path.StartsWith(candidate + "[", StringComparison.Ordinal);
 
-    private static int PrintVersion()
+    private static int PrintVersion(string[] args)
     {
-        Console.WriteLine("DriftGuard 0.1.0");
+        if (args.Length != 0)
+            throw new CliUsageException("version does not accept additional arguments.");
+        Console.WriteLine($"DriftGuard {BuildInfo.Version}");
         return 0;
     }
 

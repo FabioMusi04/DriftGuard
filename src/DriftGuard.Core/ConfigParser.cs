@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using YamlDotNet.Core;
@@ -22,17 +22,8 @@ public static class ConfigParser
         if (string.IsNullOrWhiteSpace(path))
             throw new ConfigParseException("A configuration path is required.");
 
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath))
-            throw new ConfigParseException($"Configuration file not found: {fullPath}");
-
-        var info = new FileInfo(fullPath);
-        if (info.Length > MaxFileBytes)
-            throw new ConfigParseException($"Configuration file exceeds the {MaxFileBytes / (1024 * 1024)} MiB limit: {fullPath}");
-
-        var text = File.ReadAllText(fullPath);
-        var extension = Path.GetExtension(fullPath);
-        return Parse(text, extension);
+        var text = InputSafety.ReadBoundedFile(path, MaxFileBytes, "Configuration");
+        return Parse(text, Path.GetExtension(path));
     }
 
     public static JsonNode Parse(string text, string extension)
@@ -46,6 +37,7 @@ public static class ConfigParser
             JsonNode? root;
             if (extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
             {
+                InputSafety.RejectDuplicateJsonProperties(text, MaxDepth);
                 root = JsonNode.Parse(text, documentOptions: new JsonDocumentOptions
                 {
                     AllowTrailingCommas = false,
@@ -95,13 +87,28 @@ public static class ConfigParser
         if (stream.Documents.Count != 1)
             throw new ConfigParseException("YAML must contain exactly one document.");
 
-        return ConvertYamlNode(stream.Documents[0].RootNode, 0);
+        return ConvertYamlNode(stream.Documents[0].RootNode, 0, new YamlBudget());
     }
 
-    private static JsonNode ConvertYamlNode(YamlNode node, int depth)
+    private sealed class YamlBudget
+    {
+        public int ExpandedNodes { get; set; }
+        public long ExpandedScalarBytes { get; set; }
+
+        public void CountScalar(string? value)
+        {
+            ExpandedScalarBytes += System.Text.Encoding.UTF8.GetByteCount(value ?? "");
+            if (ExpandedScalarBytes > MaxFileBytes * 2L)
+                throw new ConfigParseException("YAML expands beyond the allowed scalar data size.");
+        }
+    }
+
+    private static JsonNode ConvertYamlNode(YamlNode node, int depth, YamlBudget budget)
     {
         if (depth > MaxDepth)
             throw new ConfigParseException($"YAML nesting exceeds the maximum depth of {MaxDepth}.");
+        if (++budget.ExpandedNodes > 100_000)
+            throw new ConfigParseException("YAML expands beyond 100000 nodes.");
 
         switch (node)
         {
@@ -114,9 +121,10 @@ public static class ConfigParser
                         throw new ConfigParseException("YAML mapping keys must be non-null scalar strings.");
 
                     if (result.ContainsKey(key.Value))
-                        throw new ConfigParseException($"Duplicate YAML mapping key: '{key.Value}'.");
+                        throw new ConfigParseException("Duplicate YAML mapping keys are not allowed.");
 
-                    result.Add(key.Value, ConvertYamlNode(entry.Value, depth + 1));
+                    budget.CountScalar(key.Value);
+                    result.Add(key.Value, ConvertYamlNode(entry.Value, depth + 1, budget));
                 }
                 return result;
             }
@@ -124,10 +132,11 @@ public static class ConfigParser
             {
                 var result = new JsonArray();
                 foreach (var child in sequence.Children)
-                    result.Add(ConvertYamlNode(child, depth + 1));
+                    result.Add(ConvertYamlNode(child, depth + 1, budget));
                 return result;
             }
             case YamlScalarNode scalar:
+                budget.CountScalar(scalar.Value);
                 return ConvertYamlScalar(scalar);
             default:
                 throw new ConfigParseException($"Unsupported YAML node type: {node.GetType().Name}.");

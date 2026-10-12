@@ -1,0 +1,66 @@
+﻿{
+  "catalogVersion": 1,
+  "status": "proposal-not-enforced",
+  "billingInterval": "monthly",
+  "currency": "EUR",
+  "scope": "hosted-workspace-only",
+  "plans": {
+    "free": {
+      "suggestedPrice": 0,
+      "limits": {
+        "maxMembers": 1,
+        "maxProjects": 1,
+        "monthlyUploadedRuns": 200,
+        "historyDays": 7
+      },
+      "features": {
+        "cloudDashboard": true,
+        "ciIngestion": false,
+        "notifications": false,
+        "advancedRbac": false,
+        "auditExport": false,
+        "publicApi": false,
+        "sso": false,
+        "approvals": false
+      }
+    },
+    "basic": {
+      "suggestedPrice": 19,
+      "limits": {
+        "maxMembers": 5,
+        "maxProjects": 5,
+        "monthlyUploadedRuns": 5000,
+        "historyDays": 90
+      },
+      "features": {
+        "cloudDashboard": true,
+        "ciIngestion": true,
+        "notifications": true,
+        "advancedRbac": false,
+        "auditExport": false,
+        "publicApi": false,
+        "sso": false,
+        "approvals": false
+      }
+    },
+    "pro": {
+      "suggestedPrice": 79,
+      "limits": {
+        "maxMembers": 20,
+        "maxProjects": 25,
+        "monthlyUploadedRuns": 50000,
+        "historyDays": 365
+      },
+      "features": {
+        "cloudDashboard": true,
+        "ciIngestion": true,
+        "notifications": true,
+        "advancedRbac": true,
+        "auditExport": true,
+        "publicApi": true,
+        "sso": true,
+        "approvals": true
+      }
+    }
+  }
+}

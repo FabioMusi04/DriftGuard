@@ -1,4 +1,4 @@
-# Security policy
+﻿# Security policy
 
 Please do not report security vulnerabilities in public issues. Use GitHub's private vulnerability reporting for the repository if enabled, or contact the repository maintainers privately.
 

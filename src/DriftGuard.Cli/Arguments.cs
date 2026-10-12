@@ -1,4 +1,4 @@
-namespace DriftGuard.Cli;
+﻿namespace DriftGuard.Cli;
 
 internal sealed record ParsedArguments(IReadOnlyList<string> Positionals, IReadOnlyDictionary<string, string> Options);
 
@@ -51,4 +51,12 @@ internal static class Arguments
 
         return new ParsedArguments(positionals, options);
     }
+    public static void AllowOnly(ParsedArguments parsed, params string[] names)
+    {
+        var allowed = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+        var invalid = parsed.Options.Keys.FirstOrDefault(name => !allowed.Contains(name));
+        if (invalid is not null)
+            throw new CliUsageException($"Option --{invalid} is not supported by this command.");
+    }
+
 }

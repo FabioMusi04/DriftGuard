@@ -1,4 +1,4 @@
-# Contributing
+﻿# Contributing
 
 Thanks for helping improve DriftGuard.
 
@@ -6,7 +6,7 @@ Thanks for helping improve DriftGuard.
 
 1. Install the .NET 10 SDK.
 2. Run `dotnet restore DriftGuard.sln`.
-3. Run `dotnet test DriftGuard.sln --configuration Release`.
+3. Run `dotnet test DriftGuard.sln --configuration Release` (the reviewed 0.1.1 patch must be verified in a .NET 10 environment).
 4. Run the scenario runner and inspect the output.
 
 ## Contribution expectations

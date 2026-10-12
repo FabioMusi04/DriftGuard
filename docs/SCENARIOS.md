@@ -1,4 +1,4 @@
-# Scenario lab
+﻿# Scenario lab
 
 Run the scripts from the repository root after `dotnet build`. Each case compares `baseline` with `current`; fake values only.
 
@@ -16,12 +16,19 @@ Run the scripts from the repository root after `dotnet build`. Each case compare
 | 10 | Invalid JSON | `compare` | Parse error; exit 2, no stack trace |
 | 11 | Public ingress enabled | `check` + production policy | Error finding; exit 1 |
 | 12 | Array element removed | `compare` | Index-based removal report; exit 0 |
+| 13 | New parent object with debug enabled | `check` + production policy | Nested policy matches; exit 1 |
+| 14 | Whole `features` object removed | `check` + production policy | Billing feature removal rule matches; exit 1 |
+| 15 | Root-level password changed | `check --fail-on warning` | `**` matches zero levels; values redacted; exit 1 |
+| 16 | Duplicate JSON key | `compare` | Strict JSON rejection; exit 2 |
+| 17 | Scalar replaced by debug object | `check` + production policy | Nested setting guarded despite parent type drift; exit 1 |
 
 ## Manual verification checklist
 
 - [ ] Run `dotnet test DriftGuard.sln --configuration Release`.
 - [ ] Run `scripts/run-scenarios.sh` (or `scripts/run-scenarios.ps1`).
 - [ ] For scenario 04, verify neither `EXAMPLE_OLD_PASSWORD_NEVER_USE` nor `EXAMPLE_NEW_PASSWORD_NEVER_USE` appears in output.
+- [ ] For scenario 15, verify neither `EXAMPLE_OLD_ROOT_PASSWORD_NEVER_USE` nor `EXAMPLE_NEW_ROOT_PASSWORD_NEVER_USE` appears in output.
+- [ ] Verify scenarios 13/14/17 fail with matching nested policy findings and scenario 16 rejects duplicate keys.
 - [ ] For scenario 01, verify object key order and whitespace do not generate changes.
 - [ ] For scenario 06, compare default error threshold with `--fail-on warning`.
 - [ ] Run one JSON report and validate it with a JSON parser.

@@ -1,1 +1,1 @@
-{"services":{"worker":{"replicas":1},"api":{"replicas":3}},"logging":{"debug":false}}
+﻿{"services":{"worker":{"replicas":1},"api":{"replicas":3}},"logging":{"debug":false}}

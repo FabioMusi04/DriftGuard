@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace DriftGuard.Core;
@@ -18,16 +18,10 @@ public static class PolicyLoader
     {
         if (string.IsNullOrWhiteSpace(path))
             throw new ConfigParseException("A policy file path is required.");
-        var fullPath = Path.GetFullPath(path);
-        if (!File.Exists(fullPath))
-            throw new ConfigParseException($"Policy file not found: {fullPath}");
-        var info = new FileInfo(fullPath);
-        if (info.Length > 1024 * 1024)
-            throw new ConfigParseException("Policy file exceeds the 1 MiB limit.");
-
         try
         {
-            var text = File.ReadAllText(fullPath);
+            var text = InputSafety.ReadBoundedFile(path, 1024 * 1024, "Policy");
+            InputSafety.RejectDuplicateJsonProperties(text, 64);
             var policy = JsonSerializer.Deserialize<PolicyDocument>(text, Options)
                 ?? throw new ConfigParseException("Policy file must contain a JSON object.");
             Validate(policy);
@@ -59,13 +53,20 @@ public static class PolicyLoader
                 throw new ConfigParseException($"Duplicate policy rule id: '{rule.Id}'.");
             if (string.IsNullOrWhiteSpace(rule.Description))
                 throw new ConfigParseException($"Rule '{rule.Id}' needs a description.");
-            if (!Enum.TryParse<Severity>(rule.Severity, true, out _))
+            if (rule.Severity is null || !new[] { "info", "warning", "error" }.Contains(rule.Severity, StringComparer.OrdinalIgnoreCase))
                 throw new ConfigParseException($"Rule '{rule.Id}' has invalid severity '{rule.Severity}'. Use info, warning, or error.");
             if (!new[] { "any", "added", "removed", "changed", "type-changed" }.Contains(rule.Operation, StringComparer.OrdinalIgnoreCase))
                 throw new ConfigParseException($"Rule '{rule.Id}' has invalid operation '{rule.Operation}'.");
-            if (string.IsNullOrWhiteSpace(rule.Path) || !rule.Path.StartsWith('$'))
-                throw new ConfigParseException($"Rule '{rule.Id}' path must start with '$'.");
-            if (rule.NewValueEquals is { } value && (value.ValueKind is JsonValueKind.Object or JsonValueKind.Array))
+            if (rule.Description.Length > 2048)
+                throw new ConfigParseException($"Rule '{rule.Id}' description exceeds 2048 characters.");
+            if (string.IsNullOrWhiteSpace(rule.Path) || rule.Path.Length > 512)
+                throw new ConfigParseException($"Rule '{rule.Id}' path must contain 1–512 characters.");
+            try { JsonPath.Parse(rule.Path, allowWildcards: true); }
+            catch (ConfigParseException ex)
+            {
+                throw new ConfigParseException($"Rule '{rule.Id}' contains an invalid path: {ex.Message}", ex);
+            }
+            if (rule.NewValueEquals is { } value && (value.ValueKind is JsonValueKind.Object or JsonValueKind.Array or JsonValueKind.Undefined))
                 throw new ConfigParseException($"Rule '{rule.Id}' newValueEquals must be a scalar JSON value.");
         }
     }

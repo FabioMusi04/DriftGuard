@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -u
 cd "$(dirname "$0")/.."
 
@@ -30,5 +30,24 @@ run_case 1 '09 single replica blocks at warning threshold' "${CLI[@]}" check sce
 run_case 2 '10 malformed JSON' "${CLI[@]}" compare scenarios/10-invalid-json/baseline.json scenarios/10-invalid-json/current.json
 run_case 1 '11 public ingress enabled' "${CLI[@]}" check scenarios/11-public-ingress/baseline.json scenarios/11-public-ingress/current.json --policy "$POLICY"
 run_case 0 '12 array change is report-only' "${CLI[@]}" compare scenarios/12-array-change/baseline.json scenarios/12-array-change/current.json
+
+run_case 1 '13 newly added logging parent must not bypass debug rule' "${CLI[@]}" check scenarios/13-nested-debug-added/baseline.json scenarios/13-nested-debug-added/current.json --policy "$POLICY"
+run_case 1 '14 removed features parent must not bypass billing rule' "${CLI[@]}" check scenarios/14-parent-feature-removed/baseline.json scenarios/14-parent-feature-removed/current.json --policy "$POLICY"
+run_case 1 '15 root password matches recursive glob' "${CLI[@]}" check scenarios/15-root-password/baseline.json scenarios/15-root-password/current.json --policy "$POLICY" --fail-on warning
+run_case 2 '16 duplicate JSON key is rejected' "${CLI[@]}" compare scenarios/16-duplicate-json/baseline.json scenarios/16-duplicate-json/current.json
+run_case 1 '17 scalar-to-object debug bypass is rejected' "${CLI[@]}" check scenarios/17-type-to-object/baseline.json scenarios/17-type-to-object/current.json --policy "$POLICY"
+
+run_case 2 'CLI blocks fail-on without policy' "${CLI[@]}" compare scenarios/01-no-op/baseline.json scenarios/01-no-op/current.json --fail-on error
+run_case 2 'CLI rejects --force on compare' "${CLI[@]}" compare scenarios/01-no-op/baseline.json scenarios/01-no-op/current.json --force
+run_case 0 'init help returns success' "${CLI[@]}" init --help
+
+# Check that sensitive fixture values do not escape into textual output.
+redacted_output="$("${CLI[@]}" check scenarios/15-root-password/baseline.json scenarios/15-root-password/current.json --policy "$POLICY" --fail-on warning 2>&1)"
+redacted_status=$?
+if [ "$redacted_status" -ne 1 ] || printf '%s' "$redacted_output" | grep -Eq 'EXAMPLE_(OLD|NEW)_ROOT_PASSWORD_NEVER_USE'; then
+  printf 'FAIL: scenario 15 exited unexpectedly or exposed fixture passwords\n' >&2
+  exit 1
+fi
+printf 'PASS: scenario 15 redaction assertion\n'
 
 printf '\nAll scenario exit-code assertions passed. Review each report above for the expected finding and redaction behavior.\n'

@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 $cli = @('run', '--configuration', 'Release', '--no-build', '--project', 'src/DriftGuard.Cli', '--')
 $policy = 'policies/production.json'
@@ -23,4 +23,20 @@ Invoke-Scenario 1 '09 single replica blocks at warning threshold' (@($cli) + @('
 Invoke-Scenario 2 '10 malformed JSON' (@($cli) + @('compare','scenarios/10-invalid-json/baseline.json','scenarios/10-invalid-json/current.json'))
 Invoke-Scenario 1 '11 public ingress enabled' (@($cli) + @('check','scenarios/11-public-ingress/baseline.json','scenarios/11-public-ingress/current.json','--policy',$policy))
 Invoke-Scenario 0 '12 array change is report-only' (@($cli) + @('compare','scenarios/12-array-change/baseline.json','scenarios/12-array-change/current.json'))
+Invoke-Scenario 1 '13 nested debug in newly added parent' (@($cli) + @('check','scenarios/13-nested-debug-added/baseline.json','scenarios/13-nested-debug-added/current.json','--policy',$policy))
+Invoke-Scenario 1 '14 billing flag removed via parent object' (@($cli) + @('check','scenarios/14-parent-feature-removed/baseline.json','scenarios/14-parent-feature-removed/current.json','--policy',$policy))
+Invoke-Scenario 1 '15 root-level password matched by recursive glob' (@($cli) + @('check','scenarios/15-root-password/baseline.json','scenarios/15-root-password/current.json','--policy',$policy,'--fail-on','warning'))
+Invoke-Scenario 2 '16 duplicate JSON property rejected' (@($cli) + @('compare','scenarios/16-duplicate-json/baseline.json','scenarios/16-duplicate-json/current.json'))
+Invoke-Scenario 1 '17 type-changed logging parent does not hide debug' (@($cli) + @('check','scenarios/17-type-to-object/baseline.json','scenarios/17-type-to-object/current.json','--policy',$policy))
+Invoke-Scenario 2 'CLI blocking threshold requires --policy' (@($cli) + @('compare','scenarios/01-no-op/baseline.json','scenarios/01-no-op/current.json','--fail-on','error'))
+Invoke-Scenario 2 'CLI rejects --force on compare' (@($cli) + @('compare','scenarios/01-no-op/baseline.json','scenarios/01-no-op/current.json','--force'))
+Invoke-Scenario 0 'init help' (@($cli) + @('init','--help'))
+
+# Regression: no fixture password may escape to the textual report.
+$redactedOutput = & dotnet @cli check 'scenarios/15-root-password/baseline.json' 'scenarios/15-root-password/current.json' --policy $policy --fail-on warning 2>&1 | Out-String
+if ($LASTEXITCODE -ne 1 -or $redactedOutput -match 'EXAMPLE_(OLD|NEW)_ROOT_PASSWORD_NEVER_USE') {
+    throw 'Scenario 15 unexpectedly passed or exposed a fixture password'
+}
+Write-Host 'PASS: scenario 15 redaction assertion'
+
 Write-Host "`nAll scenario exit-code assertions passed."

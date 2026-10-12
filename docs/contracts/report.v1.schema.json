@@ -1,0 +1,63 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://driftguard.example.invalid/schemas/report.v1.json",
+  "title": "DriftGuard CLI JSON report v1",
+  "description": "Additive schema for machine-readable report output. The id is a documentation placeholder, not a hosted endpoint.",
+  "type": "object",
+  "required": ["tool", "version", "schemaVersion", "policyApplied", "baseline", "current", "changes", "findings", "summary", "failOn", "passed", "exitCode"],
+  "properties": {
+    "tool": {"const": "DriftGuard"},
+    "version": {"type": "string"},
+    "schemaVersion": {"const": 1},
+    "policyApplied": {"type": "boolean"},
+    "baseline": {"type": "string"},
+    "current": {"type": "string"},
+    "explainPath": {"type": "string"},
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "operation"],
+        "properties": {
+          "path": {"type": "string"},
+          "operation": {"enum": ["added", "removed", "changed", "type-changed"]},
+          "baselineValue": {},
+          "currentValue": {}
+        },
+        "additionalProperties": false
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ruleId", "description", "path", "severity", "operation"],
+        "properties": {
+          "ruleId": {"type": "string"},
+          "description": {"type": "string"},
+          "path": {"type": "string"},
+          "severity": {"enum": ["info", "warning", "error"]},
+          "operation": {"enum": ["added", "removed", "changed", "type-changed"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["changeCount", "findingCount", "added", "removed", "changed", "typeChanged"],
+      "properties": {
+        "changeCount": {"type": "integer", "minimum": 0},
+        "findingCount": {"type": "integer", "minimum": 0},
+        "added": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0},
+        "changed": {"type": "integer", "minimum": 0},
+        "typeChanged": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "failOn": {"enum": ["none", "warning", "error"]},
+    "passed": {"type": "boolean"},
+    "exitCode": {"enum": [0, 1]}
+  },
+  "additionalProperties": false
+}

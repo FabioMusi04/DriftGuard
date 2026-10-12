@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
@@ -45,7 +45,7 @@ public static partial class ValueRedactor
         {
             var copy = new JsonArray();
             for (var i = 0; i < array.Count; i++)
-                copy.Add(SafeNode(array[i], $"{path}[{i}]"));
+                copy.Add(SafeNode(array[i], JsonPath.AppendIndex(path, i)));
             return copy;
         }
 
@@ -70,8 +70,5 @@ public static partial class ValueRedactor
     }
 
     private static string Append(string parent, string property) =>
-        property.Length > 0 && (char.IsLetter(property[0]) || property[0] == '_') &&
-        property.All(character => char.IsLetterOrDigit(character) || character is '_' or '-')
-            ? $"{parent}.{property}"
-            : $"{parent}['{property.Replace("'", "\\'", StringComparison.Ordinal)}']";
+        JsonPath.AppendProperty(parent, property);
 }

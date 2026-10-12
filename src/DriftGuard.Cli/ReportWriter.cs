@@ -1,3 +1,4 @@
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using DriftGuard.Core;
@@ -12,11 +13,12 @@ internal static class ReportWriter
         IReadOnlyList<ConfigChange> changes,
         IReadOnlyList<PolicyFinding> findings,
         string failOn,
-        int exitCode)
+        int exitCode,
+        bool policyApplied)
     {
         Console.WriteLine("DriftGuard · semantic configuration diff");
-        Console.WriteLine($"Baseline: {baselinePath}");
-        Console.WriteLine($"Current:  {currentPath}");
+        Console.WriteLine($"Baseline: {SafeConsole(baselinePath)}");
+        Console.WriteLine($"Current:  {SafeConsole(currentPath)}");
         Console.WriteLine();
         var added = changes.Count(change => change.Kind == ChangeKind.Added);
         var removed = changes.Count(change => change.Kind == ChangeKind.Removed);
@@ -41,9 +43,11 @@ internal static class ReportWriter
         Console.WriteLine();
         var failed = exitCode != 0;
         SetColor(failed ? ConsoleColor.Red : ConsoleColor.Green);
-        Console.WriteLine(failed
-            ? $"POLICY CHECK FAILED (threshold: {failOn}). Exit code: {exitCode}"
-            : $"POLICY CHECK PASSED (threshold: {failOn}). Exit code: {exitCode}");
+        Console.WriteLine(!policyApplied
+            ? "COMPARISON COMPLETE (no policy applied; report only). Exit code: 0"
+            : failed
+                ? $"POLICY CHECK FAILED (threshold: {failOn}). Exit code: {exitCode}"
+                : $"POLICY CHECK PASSED (threshold: {failOn}). Exit code: {exitCode}");
         ResetColor();
     }
 
@@ -59,7 +63,7 @@ internal static class ReportWriter
                 _ => ("~", ConsoleColor.Cyan)
             };
             SetColor(color);
-            Console.WriteLine($"{symbol} [{change.Kind}] {change.Path}");
+            Console.WriteLine($"{symbol} [{change.Kind}] {SafeConsole(change.Path)}");
             ResetColor();
             if (change.Kind is ChangeKind.Removed or ChangeKind.Changed or ChangeKind.TypeChanged)
                 Console.WriteLine($"    before: {ValueRedactor.SafeJson(change.BaselineValue, change.Path)}");
@@ -85,9 +89,9 @@ internal static class ReportWriter
                 Severity.Warning => ConsoleColor.Yellow,
                 _ => ConsoleColor.Gray
             });
-            Console.WriteLine($"  [{finding.Severity.ToString().ToUpperInvariant()}] {finding.RuleId} — {finding.Path}");
+            Console.WriteLine($"  [{finding.Severity.ToString().ToUpperInvariant()}] {SafeConsole(finding.RuleId)} — {SafeConsole(finding.Path)}");
             ResetColor();
-            Console.WriteLine($"    {finding.Description}");
+            Console.WriteLine($"    {SafeConsole(finding.Description)}");
         }
     }
 
@@ -98,7 +102,8 @@ internal static class ReportWriter
         IReadOnlyList<PolicyFinding> findings,
         string failOn,
         int exitCode,
-        string? explainPath = null)
+        string? explainPath = null,
+        bool policyApplied = false)
     {
         var changeRows = new JsonArray();
         foreach (var change in changes)
@@ -131,7 +136,9 @@ internal static class ReportWriter
         var report = new JsonObject
         {
             ["tool"] = "DriftGuard",
-            ["version"] = "0.1.0",
+            ["version"] = BuildInfo.Version,
+            ["schemaVersion"] = BuildInfo.ReportSchemaVersion,
+            ["policyApplied"] = policyApplied,
             ["baseline"] = baselinePath,
             ["current"] = currentPath,
             ["changes"] = changeRows,
@@ -152,6 +159,22 @@ internal static class ReportWriter
         if (explainPath is not null)
             report["explainPath"] = explainPath;
         Console.WriteLine(report.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // Prevent untrusted file paths, JSON keys and policy descriptions from inserting
+    // escape sequences or forged extra lines into terminal/CI output.
+    internal static string SafeConsole(string value)
+    {
+        var output = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            if (char.IsControl(character) || character is '\u2028' or '\u2029' ||
+                char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format)
+                output.Append("\\u").Append(((int)character).ToString("X4"));
+            else
+                output.Append(character);
+        }
+        return output.ToString();
     }
 
     private static void SetColor(ConsoleColor color)

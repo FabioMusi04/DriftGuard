@@ -1,4 +1,4 @@
-namespace DriftGuard.Cli;
+﻿namespace DriftGuard.Cli;
 
 internal static class HelpPrinter
 {
@@ -18,7 +18,11 @@ internal static class HelpPrinter
                 return;
             case "explain":
                 Console.WriteLine("Usage: driftguard explain <baseline> <current> <path> [--policy file] [--format text|json]");
-                Console.WriteLine("Shows changes at a path or any descendant of that path.");
+                Console.WriteLine("Shows changes at a path, its descendants, or an enclosing changed subtree.");
+                return;
+            case "init":
+                Console.WriteLine("Usage: driftguard init [--path file] [--force]");
+                Console.WriteLine("Creates a starter policy file; --force overwrites an existing file.");
                 return;
             default:
                 Console.WriteLine("Usage:");

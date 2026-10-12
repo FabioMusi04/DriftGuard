@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 
 namespace DriftGuard.Core;
 
@@ -50,7 +50,7 @@ public sealed class DiffEngine
             var count = Math.Max(oldArray.Count, newArray.Count);
             for (var index = 0; index < count; index++)
             {
-                var childPath = $"{path}[{index}]";
+                var childPath = JsonPath.AppendIndex(path, index);
                 if (index >= oldArray.Count)
                     changes.Add(new ConfigChange(childPath, ChangeKind.Added, null, newArray[index]));
                 else if (index >= newArray.Count)
@@ -87,12 +87,6 @@ public sealed class DiffEngine
         };
     }
 
-    private static string AppendProperty(string parent, string name)
-    {
-        // Use dot notation for normal keys and bracket notation for unusual keys.
-        if (name.Length > 0 && (char.IsLetter(name[0]) || name[0] == '_') &&
-            name.All(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-'))
-            return $"{parent}.{name}";
-        return $"{parent}['{name.Replace("'", "\\'", StringComparison.Ordinal)}']";
-    }
+    private static string AppendProperty(string parent, string name) =>
+        JsonPath.AppendProperty(parent, name);
 }

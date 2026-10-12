@@ -1,1 +1,1 @@
-Expected: an ERROR finding `billing-feature-must-not-disappear`; `check` exits 1.
+﻿Expected: an ERROR finding `billing-feature-must-not-disappear`; `check` exits 1.
