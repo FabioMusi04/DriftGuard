@@ -6,23 +6,38 @@ on:
 
 permissions:
   contents: read
-  contents: write
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - name: Verify Windows source encoding (UTF-8 BOM and CRLF)
+        shell: pwsh
+        run: ./scripts/check-windows-encoding.ps1
       - name: Restore
         run: dotnet restore DriftGuard.sln
       - name: Build
         run: dotnet build DriftGuard.sln --configuration Release --no-restore
-      - name: Test
+      - name: Unit and CLI integration tests
         run: dotnet test DriftGuard.sln --configuration Release --no-build --logger "console;verbosity=normal"
-      - name: Run scenario lab
-        run: pwsh ./scripts/run-scenarios.ps1
+      - name: Run scenario lab (PowerShell handles Windows BOM/CRLF)
+        shell: pwsh
+        run: ./scripts/run-scenarios.ps1
+      - name: Smoke-test local GitHub Action
+        uses: ./.github/actions/driftguard
+        with:
+          baseline: scenarios/08-safe-addition/baseline.json
+          current: scenarios/08-safe-addition/current.json
+          policy: policies/production.json
+          upload-artifact: 'false'
+          upload-sarif: 'false'

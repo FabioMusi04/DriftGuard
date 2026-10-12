@@ -14,6 +14,8 @@ Questa roadmap propone un passaggio progressivo da CLI open-source a piattaforma
 
 ## P1 — Contratti pubblici e integrazioni DevOps
 
+**Stato 0.2.0:** implementati `validate-policy`, report senza valori, omissione sorgenti, error JSON, output SARIF con fingerprint, GitHub Action locale, golden fixture, test CLI e CI a matrice Windows/Ubuntu. Ancora da verificare **build/runtime reali su .NET 10**; SARIF ha posizione approssimata alla riga 1. Punti futuri: eventuale source mapping preciso e validazione end-to-end della Action su GitHub.
+
 1. Consolidare report JSON v1 con schema, fixture, golden tests e regole di versionamento. Aggiungere un'opzione valori-free che ometta completamente i contenuti raw dai report destinati al cloud.
 2. Creare comando `validate-policy` ed errori strutturati (`--format json` anche per errori d'uso), senza mutare i significati degli exit code.
 3. Pubblicare un GitHub Action wrapper che esegue la CLI versionata e carica report redatti come artifact opzionale.

@@ -2,7 +2,7 @@
 
 **Semantic configuration diff and deployment-policy checks for .NET teams.** DriftGuard compares two JSON/YAML configuration snapshots, explains their behavioral differences, applies a small policy rule set, and returns CI-friendly exit codes.
 
-> Status: early open-source MVP (`0.1.1` engineering hardening patch). The code and scenarios are a strong starting point, not a substitute for testing with your own deployment configuration before production enforcement.
+> Status: early open-source MVP (`0.2.0` CLI/CI integration increment). The code and scenarios are a strong starting point, not a substitute for testing with your own deployment configuration before production enforcement.
 
 ## Why a CLI first?
 
@@ -21,6 +21,8 @@ DriftGuard is intentionally CLI-first. Configuration checks belong in local work
 - Unit tests, CI workflow, production-oriented sample policy, and 17 reproducible scenarios.
 - Fail-closed duplicate JSON keys, bounded YAML expansion and policy evaluation, and strict CLI options.
 - Versioned JSON report fields (`schemaVersion`, `policyApplied`) as a starting point for web integrations.
+- CLI v0.2.0: `validate-policy`, machine-readable JSON errors, value-free reports (`--values none`) and optional omission of source filenames (`--source-names none`).
+- SARIF 2.1.0 output with deterministic finding fingerprints, GitHub Action wrapper and Windows/Ubuntu CLI integration-test matrix.
 
 ## Requirements
 
@@ -67,6 +69,28 @@ dotnet run --project src/DriftGuard.Cli -- check \
   --fail-on warning
 ```
 
+Validate a policy before applying it:
+
+```powershell
+dotnet run --project src/DriftGuard.Cli -- validate-policy policies/production.json --format json
+```
+
+Generate a privacy-minimized JSON report for a CI artifact (example scenario intentionally exits `1`):
+
+```powershell
+dotnet run --project src/DriftGuard.Cli -- check scenarios/02-debug-enabled/baseline.json scenarios/02-debug-enabled/current.json --policy policies/production.json --format json --values none --source-names none
+```
+
+`--values none` **omits** all `baselineValue` and `currentValue` members rather than substituting a mask. `--source-names none` replaces only the input file labels with `[omitted]`. JSONPaths, policy IDs and descriptions remain, so reports may still be sensitive. With `--format json`, usage/input errors also produce a structured JSON object on stdout and exit `2` (separate schema).
+
+Export SARIF for GitHub Code Scanning (findings are anchored to the current file at line **1**, not exact YAML/JSON lines):
+
+```powershell
+dotnet run --project src/DriftGuard.Cli -- check scenarios/02-debug-enabled/baseline.json scenarios/02-debug-enabled/current.json --policy policies/production.json --format sarif
+```
+
+A reusable local composite Action lives at [`.github/actions/driftguard/`](.github/actions/driftguard/README.md); by default it does not upload anything. Artifact and SARIF uploads are opt-in.
+
 Explain a path (including any changed descendants):
 
 ```bash
@@ -94,7 +118,10 @@ dotnet run --project src/DriftGuard.Cli -- init --path driftguard.policy.json
 | `--fail-on none` | Never fails based on policy findings. Useful for report-only adoption. |
 | `--fail-on warning` | Exit `1` on warning or error findings. |
 | `--fail-on error` | Exit `1` only on error findings. |
-| Invalid input / unknown option | Exit `2`; details go to stderr. |
+| Invalid input / unknown option | Exit `2`; in text mode details go to stderr; with `--format json`, error JSON goes to stdout. |
+| `validate-policy` | Returns 0 for a valid policy, 2 otherwise; no change report is emitted. |
+| `--values none` | Omits old/new values in JSON and hides values in text (does not change matching). |
+| `--source-names none` | Replaces baseline/current labels with `[omitted]` in reports (not allowed with SARIF). |
 
 `check` requiring an explicit policy is deliberate: an absent policy must not quietly look like a successful production gate. `compare --fail-on warning/error` **also requires** `--policy`; otherwise the CLI returns exit `2` rather than silently passing without rules. Options that do not belong to a given command are rejected.
 
@@ -134,9 +161,9 @@ A rule evaluates observed differences only. For an entire object/array added, re
 All sample inputs are intentionally fake. Run all 17 test scenarios after building:
 
 ```bash
-# Linux/macOS
+# Linux/macOS: the Windows ZIP ships Bash sources in BOM/CRLF, so use PowerShell 7 or convert that single .sh script to LF/no BOM.
 dotnet test DriftGuard.sln --configuration Release
-bash ./scripts/run-scenarios.sh
+pwsh ./scripts/run-scenarios.ps1
 
 # Windows PowerShell
 dotnet test DriftGuard.sln --configuration Release
@@ -153,7 +180,8 @@ src/
   DriftGuard.Core/         Parsing, diff model, redaction, policy engine
   DriftGuard.Cli/          Command-line interface and report formatting
 tests/
-  DriftGuard.Core.Tests/   Unit tests
+  DriftGuard.Core.Tests/   Unit and regression tests
+  DriftGuard.Cli.Tests/    CLI process tests + golden JSON fixture
 policies/
   production.json          Example deployment policy
 scenarios/                 Reproducible baseline/current pairs
@@ -167,7 +195,7 @@ scripts/                   Scenario runners
 - YAML scalar conversion supports common config types (quoted strings, booleans, null, integers and decimal/exponent numbers); this is not a complete YAML-to-JSON compatibility layer for every YAML 1.1/1.2 edge case.
 - Arrays are compared by index. Reordering an array is meaningful drift.
 - Paths are JSONPath-like, not a full implementation of the JSONPath standard. Property names with dots or special characters use bracket notation in reports; test policy matching against those names before enforcing it.
-- Redaction is best effort and heuristic. Treat input and output as sensitive; do not publish reports indiscriminately or upload them to untrusted services. The future cloud ingestion feature requires a stricter values-free report mode.
+- Redaction is best effort and heuristic. Treat input and output as sensitive. The new `--values none` mode excludes raw old/new values from report fields, but field paths and policy descriptions remain potentially sensitive; future SaaS ingestion needs additional metadata policy validation.
 - No automatic merge, remote secret retrieval, cloud API calls, or write-back to configuration files.
 - CLI output uses the standard terminal; there is no web dashboard in v1.
 - Policy evaluation fails with exit `2` for workloads exceeding its bounded candidate/finding/comparison limits. See the engineering review for details.
@@ -191,13 +219,16 @@ scripts/                   Scenario runners
 - [Free, Basic, Pro licensing/entitlement model (Italian)](docs/product/PLANS.it.md)
 - [Proposal JSON plan catalog](docs/product/plan-catalog.proposal.json)
 - [Report v1 JSON schema](docs/contracts/report.v1.schema.json)
+- [P1 implementation notes (Italian)](docs/IMPLEMENTAZIONE-P1.it.md)
+- [GitHub Action usage](.github/actions/driftguard/README.md)
+- [Structured error and validation JSON schemas](docs/contracts/README.md)
 
 **Important:** the web backend, billing, paid plan enforcement and subscriptions are **not implemented**. The current code is MIT licensed; proposed plans apply only to future hosted services.
 
 ## Roadmap ideas (not implemented)
 
-- GitHub Action wrapper and SARIF output.
-- Policy validation command plus `--explain-rule <id>`.
+- Accurate JSON/YAML-to-source-line SARIF mapping for pull-request inline annotations.
+- Interactive rule explanation (`--explain-rule <id>`).
 - Recursive comparison of directory trees and secret-name inventory scan.
 - Additional parsers and Kubernetes-specific semantic normalizers.
 - Optional local web/TUI view for reviewing multiple environments; only after a stable JSON schema exists.

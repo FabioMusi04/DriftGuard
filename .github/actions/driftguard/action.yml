@@ -1,0 +1,103 @@
+﻿name: DriftGuard policy gate
+description: Run the repository's pinned DriftGuard CLI, optionally archive a minimal JSON report and upload SARIF.
+inputs:
+  baseline:
+    description: Path to the baseline JSON/YAML configuration relative to the checkout.
+    required: true
+  current:
+    description: Path to the current JSON/YAML configuration relative to the checkout.
+    required: true
+  policy:
+    description: Path to the versioned policy JSON file relative to the checkout.
+    required: true
+  fail-on:
+    description: none, warning or error.
+    required: false
+    default: error
+  upload-artifact:
+    description: Upload a minimal (no values, no source filenames) JSON report artifact.
+    required: false
+    default: 'false'
+  upload-sarif:
+    description: Upload findings to GitHub code scanning (requires security-events write).
+    required: false
+    default: 'false'
+outputs:
+  exit-code:
+    description: The CLI's 0/1/2 status code.
+    value: ${{ steps.gate.outputs.exit-code }}
+  report-path:
+    description: Path of the generated local JSON report on the runner.
+    value: ${{ steps.gate.outputs.report-path }}
+runs:
+  using: composite
+  steps:
+    - name: Set up .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - name: Build pinned repository CLI
+      shell: pwsh
+      env:
+        CLI_PROJECT: ${{ github.action_path }}/../../../src/DriftGuard.Cli/DriftGuard.Cli.csproj
+      run: |
+        $ErrorActionPreference = 'Stop'
+        & dotnet build $env:CLI_PROJECT --configuration Release
+        if ($LASTEXITCODE -ne 0) { throw "DriftGuard build failed ($LASTEXITCODE)" }
+    - name: Generate minimal JSON report
+      id: gate
+      shell: pwsh
+      env:
+        CLI_PROJECT: ${{ github.action_path }}/../../../src/DriftGuard.Cli/DriftGuard.Cli.csproj
+        DG_BASELINE: ${{ inputs.baseline }}
+        DG_CURRENT: ${{ inputs.current }}
+        DG_POLICY: ${{ inputs.policy }}
+        DG_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
+        $report = Join-Path $env:RUNNER_TEMP 'driftguard-report.json'
+        & dotnet run --no-build --configuration Release --project $env:CLI_PROJECT -- check $env:DG_BASELINE $env:DG_CURRENT --policy $env:DG_POLICY --fail-on $env:DG_FAIL_ON --format json --values none --source-names none 1> $report
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -notin @(0, 1, 2)) { throw "Unexpected CLI exit code $exitCode" }
+        "exit-code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "report-path=$report" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Upload JSON artifact (opt-in)
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: driftguard-minimal-report
+        path: ${{ steps.gate.outputs.report-path }}
+        if-no-files-found: error
+        retention-days: 7
+    - name: Generate SARIF (opt-in)
+      if: ${{ inputs.upload-sarif == 'true' && steps.gate.outputs.exit-code != '2' }}
+      id: sarif
+      shell: pwsh
+      env:
+        CLI_PROJECT: ${{ github.action_path }}/../../../src/DriftGuard.Cli/DriftGuard.Cli.csproj
+        DG_BASELINE: ${{ inputs.baseline }}
+        DG_CURRENT: ${{ inputs.current }}
+        DG_POLICY: ${{ inputs.policy }}
+        DG_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
+        $sarif = Join-Path $env:RUNNER_TEMP 'driftguard-report.sarif'
+        & dotnet run --no-build --configuration Release --project $env:CLI_PROJECT -- check $env:DG_BASELINE $env:DG_CURRENT --policy $env:DG_POLICY --fail-on $env:DG_FAIL_ON --format sarif 1> $sarif
+        if ($LASTEXITCODE -notin @(0, 1)) { throw "SARIF export failed ($LASTEXITCODE)" }
+        "path=$sarif" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Upload SARIF to code scanning (opt-in)
+      if: ${{ inputs.upload-sarif == 'true' && steps.gate.outputs.exit-code != '2' }}
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ steps.sarif.outputs.path }}
+        category: driftguard
+    - name: Enforce deployment gate
+      if: ${{ steps.gate.outputs.exit-code != '0' }}
+      shell: pwsh
+      env:
+        CLI_CODE: ${{ steps.gate.outputs.exit-code }}
+      run: |
+        Write-Error "DriftGuard returned exit $env:CLI_CODE. Review the report and policy findings."
+        exit ([int]$env:CLI_CODE)

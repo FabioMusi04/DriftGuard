@@ -43,7 +43,7 @@ internal static class Arguments
 
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "help", "force", "baseline", "current", "path", "policy", "format", "fail-on"
+            "help", "force", "baseline", "current", "path", "policy", "format", "fail-on", "values", "source-names"
         };
         var unsupported = options.Keys.FirstOrDefault(key => !allowed.Contains(key));
         if (unsupported is not null)
@@ -51,6 +51,24 @@ internal static class Arguments
 
         return new ParsedArguments(positionals, options);
     }
+
+    // Best-effort format/privacy hints must work even if Parse fails on malformed options.
+    public static bool RequestedJson(string[] arguments) => HasOptionValue(arguments, "format", "json");
+
+    public static bool RequestedMinimalError(string[] arguments) =>
+        HasOptionValue(arguments, "values", "none") || HasOptionValue(arguments, "source-names", "none");
+
+    private static bool HasOptionValue(string[] arguments, string name, string value)
+    {
+        for (var index = 0; index < arguments.Length - 1; index++)
+        {
+            if (arguments[index].Equals("--" + name, StringComparison.OrdinalIgnoreCase) &&
+                arguments[index + 1].Equals(value, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     public static void AllowOnly(ParsedArguments parsed, params string[] names)
     {
         var allowed = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
@@ -58,5 +76,4 @@ internal static class Arguments
         if (invalid is not null)
             throw new CliUsageException($"Option --{invalid} is not supported by this command.");
     }
-
 }

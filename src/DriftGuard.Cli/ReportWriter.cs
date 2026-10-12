@@ -7,6 +7,8 @@ namespace DriftGuard.Cli;
 
 internal static class ReportWriter
 {
+    private static readonly JsonSerializerOptions PrettyJson = new() { WriteIndented = true };
+
     public static void WriteText(
         string baselinePath,
         string currentPath,
@@ -14,7 +16,8 @@ internal static class ReportWriter
         IReadOnlyList<PolicyFinding> findings,
         string failOn,
         int exitCode,
-        bool policyApplied)
+        bool policyApplied,
+        bool includeValues = true)
     {
         Console.WriteLine("DriftGuard · semantic configuration diff");
         Console.WriteLine($"Baseline: {SafeConsole(baselinePath)}");
@@ -35,7 +38,7 @@ internal static class ReportWriter
         else
         {
             Console.WriteLine();
-            WriteChanges(changes);
+            WriteChanges(changes, includeValues);
         }
 
         Console.WriteLine();
@@ -51,7 +54,7 @@ internal static class ReportWriter
         ResetColor();
     }
 
-    public static void WriteChanges(IReadOnlyList<ConfigChange> changes)
+    public static void WriteChanges(IReadOnlyList<ConfigChange> changes, bool includeValues = true)
     {
         foreach (var change in changes)
         {
@@ -65,6 +68,8 @@ internal static class ReportWriter
             SetColor(color);
             Console.WriteLine($"{symbol} [{change.Kind}] {SafeConsole(change.Path)}");
             ResetColor();
+            if (!includeValues)
+                continue;
             if (change.Kind is ChangeKind.Removed or ChangeKind.Changed or ChangeKind.TypeChanged)
                 Console.WriteLine($"    before: {ValueRedactor.SafeJson(change.BaselineValue, change.Path)}");
             if (change.Kind is ChangeKind.Added or ChangeKind.Changed or ChangeKind.TypeChanged)
@@ -103,6 +108,7 @@ internal static class ReportWriter
         string failOn,
         int exitCode,
         string? explainPath = null,
+        bool includeValues = true,
         bool policyApplied = false)
     {
         var changeRows = new JsonArray();
@@ -111,12 +117,15 @@ internal static class ReportWriter
             var row = new JsonObject
             {
                 ["path"] = change.Path,
-                ["operation"] = change.Kind.ToString().ToLowerInvariant().Replace("typechanged", "type-changed", StringComparison.Ordinal),
+                ["operation"] = Operation(change.Kind)
             };
-            if (change.Kind is ChangeKind.Removed or ChangeKind.Changed or ChangeKind.TypeChanged)
-                row["baselineValue"] = ValueRedactor.SafeNode(change.BaselineValue, change.Path);
-            if (change.Kind is ChangeKind.Added or ChangeKind.Changed or ChangeKind.TypeChanged)
-                row["currentValue"] = ValueRedactor.SafeNode(change.CurrentValue, change.Path);
+            if (includeValues)
+            {
+                if (change.Kind is ChangeKind.Removed or ChangeKind.Changed or ChangeKind.TypeChanged)
+                    row["baselineValue"] = ValueRedactor.SafeNode(change.BaselineValue, change.Path);
+                if (change.Kind is ChangeKind.Added or ChangeKind.Changed or ChangeKind.TypeChanged)
+                    row["currentValue"] = ValueRedactor.SafeNode(change.CurrentValue, change.Path);
+            }
             changeRows.Add(row);
         }
 
@@ -129,10 +138,12 @@ internal static class ReportWriter
                 ["description"] = finding.Description,
                 ["path"] = finding.Path,
                 ["severity"] = finding.Severity.ToString().ToLowerInvariant(),
-                ["operation"] = finding.ChangeKind.ToString().ToLowerInvariant().Replace("typechanged", "type-changed", StringComparison.Ordinal)
+                ["operation"] = Operation(finding.ChangeKind)
             });
         }
 
+        // Keep the v1 wire contract unchanged. --values none is represented by omitting
+        // BOTH value properties (rather than replacing values with unreliable placeholders).
         var report = new JsonObject
         {
             ["tool"] = "DriftGuard",
@@ -158,8 +169,49 @@ internal static class ReportWriter
         };
         if (explainPath is not null)
             report["explainPath"] = explainPath;
-        Console.WriteLine(report.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        WriteObject(report);
     }
+
+    public static void WriteErrorJson(string code, string message)
+    {
+        WriteObject(new JsonObject
+        {
+            ["kind"] = "error",
+            ["tool"] = "DriftGuard",
+            ["version"] = BuildInfo.Version,
+            ["schemaVersion"] = 1,
+            ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
+            ["exitCode"] = 2
+        });
+    }
+
+    public static void WritePolicyValidationJson(PolicyDocument policy)
+    {
+        WriteObject(new JsonObject
+        {
+            ["kind"] = "policy-validation",
+            ["tool"] = "DriftGuard",
+            ["version"] = BuildInfo.Version,
+            ["schemaVersion"] = 1,
+            ["valid"] = true,
+            ["policyVersion"] = policy.Version,
+            ["ruleCount"] = policy.Rules.Count,
+            ["severityCounts"] = new JsonObject
+            {
+                ["info"] = policy.Rules.Count(rule => rule.Severity.Equals("info", StringComparison.OrdinalIgnoreCase)),
+                ["warning"] = policy.Rules.Count(rule => rule.Severity.Equals("warning", StringComparison.OrdinalIgnoreCase)),
+                ["error"] = policy.Rules.Count(rule => rule.Severity.Equals("error", StringComparison.OrdinalIgnoreCase))
+            }
+        });
+    }
+
+    internal static string Operation(ChangeKind change) => change switch
+    {
+        ChangeKind.TypeChanged => "type-changed",
+        _ => change.ToString().ToLowerInvariant()
+    };
+
+    internal static void WriteObject(JsonObject value) => Console.WriteLine(value.ToJsonString(PrettyJson));
 
     // Prevent untrusted file paths, JSON keys and policy descriptions from inserting
     // escape sequences or forged extra lines into terminal/CI output.
